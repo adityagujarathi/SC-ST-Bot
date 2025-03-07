@@ -861,6 +861,12 @@ if 'ui_text' not in st.session_state:
             "researching": "Researching your question..."
         }
 
+# Initialize global variables if not already defined
+if 'DOCUMENTS' not in globals():
+    DOCUMENTS = []
+if 'DOCUMENT_METADATA' not in globals():
+    DOCUMENT_METADATA = []
+
 # API Key input
 api_key = get_api_key()
 if api_key == "MISSING_API_KEY":
@@ -903,16 +909,11 @@ def process_uploaded_files(files):
     # Reload the dataset
     load_dataset()
 
-# Load dataset
+# Try to load dataset, but don't crash if it fails
 try:
     load_dataset()
 except Exception as e:
     st.error(f"Error loading dataset: {str(e)}")
-    # Initialize empty dataset if loading fails
-    if 'DOCUMENTS' not in globals():
-        DOCUMENTS = []
-    if 'DOCUMENT_METADATA' not in globals():
-        DOCUMENT_METADATA = []
 
 # App title and description
 st.title(st.session_state.ui_text["app_title"])
@@ -920,11 +921,11 @@ st.markdown(st.session_state.ui_text["app_description"])
 
 # Sidebar
 with st.sidebar:
-    st.header(st.session_state.ui_text["settings"])
+    st.header(st.session_state.ui_text.get("settings", "Settings"))
     
     # Language selection
     if LANGUAGE_SUPPORT_AVAILABLE:
-        st.subheader(st.session_state.ui_text["language"])
+        st.subheader(st.session_state.ui_text.get("language", "Select Language"))
         selected_language = st.selectbox(
             "Select language:",
             options=list(SUPPORTED_LANGUAGES.keys()),
@@ -940,32 +941,35 @@ with st.sidebar:
     uploaded_files = st.file_uploader("Upload PDF, DOCX, or PPTX files", type=["pdf", "docx", "pptx"], accept_multiple_files=True)
     
     if uploaded_files:
-        if st.button(st.session_state.ui_text["process_button"]):
+        if st.button(st.session_state.ui_text.get("process_button", "Process Documents")):
             process_uploaded_files(uploaded_files)
-            st.success(st.session_state.ui_text["documents_processed"])
+            st.success(st.session_state.ui_text.get("documents_processed", "Documents processed successfully!"))
     else:
-        st.warning(st.session_state.ui_text["no_documents"])
+        st.warning("No documents uploaded yet. Please upload some documents.")
     
     # Display enhanced search status
     if ENHANCED_SEARCH_AVAILABLE:
-        st.success(st.session_state.ui_text["enhanced_search_available"])
+        st.success(st.session_state.ui_text.get("enhanced_search_available", "Enhanced search is available"))
     else:
-        st.warning(st.session_state.ui_text["enhanced_search_unavailable"])
-        st.info(st.session_state.ui_text["install_scikit"])
+        st.warning(st.session_state.ui_text.get("enhanced_search_unavailable", "Enhanced search is not available"))
+        st.info(st.session_state.ui_text.get("install_scikit", "Install scikit-learn for enhanced search"))
     
     # Force reprocessing button
-    st.subheader(st.session_state.ui_text["document_processing"])
-    if st.button(st.session_state.ui_text["reprocess_button"]):
-        st.warning(st.session_state.ui_text["reprocessing_message"])
-        load_dataset(force_reprocess=True)
-        st.success(st.session_state.ui_text["documents_processed"])
+    st.subheader(st.session_state.ui_text.get("document_processing", "Document Processing"))
+    if st.button(st.session_state.ui_text.get("reprocess_button", "Reprocess All Documents")):
+        st.warning(st.session_state.ui_text.get("reprocessing_message", "Reprocessing all documents..."))
+        try:
+            load_dataset(force_reprocess=True)
+            st.success(st.session_state.ui_text.get("documents_processed", "Documents processed successfully!"))
+        except Exception as e:
+            st.error(f"Error reprocessing documents: {str(e)}")
 
 # Main content area
 st.markdown("---")
-st.subheader(st.session_state.ui_text["question_prompt"])
+st.subheader(st.session_state.ui_text.get("question_prompt", "Ask a question about SC/ST Atrocities Act..."))
 
 # User input
-user_query = st.text_area(st.session_state.ui_text["your_question"], height=100)
+user_query = st.text_area(st.session_state.ui_text.get("your_question", "Your question"), height=100)
 
 # Initialize session state for response
 if 'response' not in st.session_state:
@@ -975,13 +979,20 @@ if 'response' not in st.session_state:
     st.session_state.query_lang = "en"
 
 # Submit button
-if st.button(st.session_state.ui_text["submit_button"]) and user_query:
-    with st.spinner(st.session_state.ui_text["researching"]):
-        response_data = query_assistant(user_query)
-        st.session_state.response = response_data["response"]
-        st.session_state.original_response = response_data.get("original_response", response_data["response"])
-        st.session_state.response_lang = response_data.get("response_lang", "en")
-        st.session_state.query_lang = response_data.get("query_lang", "en")
+if st.button(st.session_state.ui_text.get("submit_button", "Submit")) and user_query:
+    with st.spinner(st.session_state.ui_text.get("researching", "Researching your question...")):
+        try:
+            response_data = query_assistant(user_query)
+            st.session_state.response = response_data.get("response", "No response generated.")
+            st.session_state.original_response = response_data.get("original_response", st.session_state.response)
+            st.session_state.response_lang = response_data.get("response_lang", "en")
+            st.session_state.query_lang = response_data.get("query_lang", "en")
+        except Exception as e:
+            st.error(f"Error processing your query: {str(e)}")
+            st.session_state.response = f"I'm sorry, I encountered an error while processing your query: {str(e)}"
+            st.session_state.original_response = st.session_state.response
+            st.session_state.response_lang = "en"
+            st.session_state.query_lang = "en"
 
 # Display response if available
 if st.session_state.response:
@@ -993,7 +1004,7 @@ if st.session_state.response:
     
     with translation_col:
         if LANGUAGE_SUPPORT_AVAILABLE:
-            st.subheader(st.session_state.ui_text["translate_to"])
+            st.subheader(st.session_state.ui_text.get("translate_to", "Translate to"))
             
             # Add "Original" option to the languages
             translation_options = list(SUPPORTED_LANGUAGES.keys())
