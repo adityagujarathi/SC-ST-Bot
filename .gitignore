@@ -1,0 +1,18 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+
+# Streamlit
+.streamlit/
+
+# Application data
+document_index.json
+translations_cache.json
+
+# OS specific
+.DS_Store
