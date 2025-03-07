@@ -29,12 +29,14 @@ try:
 except ImportError:
     ENHANCED_SEARCH_AVAILABLE = False
 
-# For better table extraction
+# Check if tabula is available
 try:
     import tabula
+    import pandas as pd
     TABULA_AVAILABLE = True
 except ImportError:
     TABULA_AVAILABLE = False
+    st.warning("tabula-py is not available. Table extraction from PDFs will be limited. This is expected in cloud deployment.")
 
 # Check if Google Generative AI package is installed
 try:
