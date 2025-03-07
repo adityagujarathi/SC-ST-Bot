@@ -831,25 +831,34 @@ if 'ui_text' not in st.session_state:
         st.session_state.ui_text = get_ui_text("en")
     else:
         st.session_state.ui_text = {
-            "title": "SC/ST Atrocities Act Research Assistant",
-            "subtitle": "Ask questions about SC/ST Atrocities Act cases and get AI-powered responses",
-            "api_key_missing": "API Key is missing. Please add it to the .env file.",
+            "app_title": "SC/ST Atrocities Act Research Assistant",
+            "app_description": "Ask questions about SC/ST Atrocities Act cases and get AI-powered responses",
+            "api_key_missing": "API Key is missing. Please add it to the .env file or Streamlit secrets.",
             "upload_button": "Upload Documents",
             "process_button": "Process Documents",
             "reprocess_button": "Reprocess All Documents",
-            "query_placeholder": "Ask a question about SC/ST Atrocities Act...",
+            "question_prompt": "Ask a question about SC/ST Atrocities Act...",
+            "your_question": "Your question",
             "submit_button": "Submit",
             "clear_button": "Clear",
             "documents_processed": "Documents processed successfully!",
             "no_documents": "No documents found. Please upload some documents first.",
             "language_select": "Select Language",
+            "language": "Select Language",
             "translate_to": "Translate to",
             "detected_language": "Detected Language",
             "original_response": "Original Response",
             "translated_response": "Translated Response",
             "web_search_option": "Enable Web Search",
             "enhanced_search_option": "Enable Enhanced Search",
-            "table_extraction_unavailable": "Tabula-py is not installed. Table extraction from PDFs will be limited."
+            "enhanced_search_available": "Enhanced search is available",
+            "enhanced_search_unavailable": "Enhanced search is not available",
+            "install_scikit": "Install scikit-learn for enhanced search",
+            "document_processing": "Document Processing",
+            "reprocessing_message": "Reprocessing all documents...",
+            "table_extraction_unavailable": "Tabula-py is not installed. Table extraction from PDFs will be limited.",
+            "settings": "Settings",
+            "researching": "Researching your question..."
         }
 
 # API Key input
@@ -873,9 +882,41 @@ def update_language(lang_code):
         st.session_state.ui_text = get_ui_text(lang_code)
     st.experimental_rerun()
 
+# Function to process uploaded files
+def process_uploaded_files(files):
+    """Process uploaded files and add them to the dataset"""
+    for uploaded_file in files:
+        # Create a temporary file
+        with open(f"temp_{uploaded_file.name}", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        
+        # Process the file
+        try:
+            process_document(f"temp_{uploaded_file.name}")
+            st.success(f"Processed {uploaded_file.name}")
+        except Exception as e:
+            st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+        
+        # Remove the temporary file
+        os.remove(f"temp_{uploaded_file.name}")
+    
+    # Reload the dataset
+    load_dataset()
+
+# Load dataset
+try:
+    load_dataset()
+except Exception as e:
+    st.error(f"Error loading dataset: {str(e)}")
+    # Initialize empty dataset if loading fails
+    if 'DOCUMENTS' not in globals():
+        DOCUMENTS = []
+    if 'DOCUMENT_METADATA' not in globals():
+        DOCUMENT_METADATA = []
+
 # App title and description
-st.title(st.session_state.ui_text["title"])
-st.markdown(st.session_state.ui_text["subtitle"])
+st.title(st.session_state.ui_text["app_title"])
+st.markdown(st.session_state.ui_text["app_description"])
 
 # Sidebar
 with st.sidebar:
@@ -883,7 +924,7 @@ with st.sidebar:
     
     # Language selection
     if LANGUAGE_SUPPORT_AVAILABLE:
-        st.subheader(st.session_state.ui_text["language_select"])
+        st.subheader(st.session_state.ui_text["language"])
         selected_language = st.selectbox(
             "Select language:",
             options=list(SUPPORTED_LANGUAGES.keys()),
@@ -893,101 +934,54 @@ with st.sidebar:
         
         if selected_language != st.session_state.language:
             update_language(selected_language)
-        
-        # Show language capabilities status
-        if LANG_DETECT_AVAILABLE:
-            st.success(" Language detection is available")
-        else:
-            st.warning(" Language detection is not available")
-            
-        if TRANSLATOR:
-            st.success(f" Translation is available ({TRANSLATOR})")
-        else:
-            st.warning(" Translation is not available")
+    
+    # Upload documents
+    st.subheader("Upload Documents")
+    uploaded_files = st.file_uploader("Upload PDF, DOCX, or PPTX files", type=["pdf", "docx", "pptx"], accept_multiple_files=True)
+    
+    if uploaded_files:
+        if st.button(st.session_state.ui_text["process_button"]):
+            process_uploaded_files(uploaded_files)
+            st.success(st.session_state.ui_text["documents_processed"])
+    else:
+        st.warning(st.session_state.ui_text["no_documents"])
     
     # Display enhanced search status
     if ENHANCED_SEARCH_AVAILABLE:
-        st.success(st.session_state.ui_text["enhanced_search_option"])
+        st.success(st.session_state.ui_text["enhanced_search_available"])
     else:
         st.warning(st.session_state.ui_text["enhanced_search_unavailable"])
         st.info(st.session_state.ui_text["install_scikit"])
     
     # Force reprocessing button
-    st.subheader(st.session_state.ui_text["reprocess_button"])
+    st.subheader(st.session_state.ui_text["document_processing"])
     if st.button(st.session_state.ui_text["reprocess_button"]):
         st.warning(st.session_state.ui_text["reprocessing_message"])
         load_dataset(force_reprocess=True)
-        st.success(st.session_state.ui_text["reprocessing_success"])
-    
-    # Table extraction status
-    if TABULA_AVAILABLE:
-        st.success(st.session_state.ui_text["table_extraction_available"])
-    else:
-        st.warning(st.session_state.ui_text["table_extraction_unavailable"])
-    
-    # Show document stats
-    if DOCUMENTS:
-        st.subheader(st.session_state.ui_text["document_statistics"])
-        st.write(f"{st.session_state.ui_text['total_chunks']}: {len(DOCUMENTS)}")
-        
-        # Count table chunks
-        table_chunks = sum(1 for doc in DOCUMENTS if "EXTRACTED TABLE:" in doc)
-        if table_chunks > 0:
-            st.write(f"{st.session_state.ui_text['table_chunks']}: {table_chunks}")
-            
-        # Count unique source files
-        unique_sources = set(meta['source'] for meta in DOCUMENT_METADATA)
-        st.write(f"{st.session_state.ui_text['unique_sources']}: {len(unique_sources)}")
-        
-        # Show file types
-        pdf_files = sum(1 for source in unique_sources if source.lower().endswith('.pdf'))
-        docx_files = sum(1 for source in unique_sources if source.lower().endswith('.docx'))
-        pptx_files = sum(1 for source in unique_sources if source.lower().endswith('.pptx'))
-        
-        st.write(f"{st.session_state.ui_text['pdf_files']}: {pdf_files}")
-        st.write(f"{st.session_state.ui_text['docx_files']}: {docx_files}")
-        st.write(f"{st.session_state.ui_text['pptx_files']}: {pptx_files}")
-    
-    # Display log messages
-    if LOG_MESSAGES:
-        st.subheader(st.session_state.ui_text["processing_log"])
-        for msg in LOG_MESSAGES[-10:]:  # Show only the last 10 messages
-            if msg["level"] == "error":
-                st.error(msg["message"])
-            elif msg["level"] == "warning":
-                st.warning(msg["message"])
-            elif msg["level"] == "success":
-                st.success(msg["message"])
-            else:
-                st.info(msg["message"])
-        
-        if len(LOG_MESSAGES) > 10:
-            st.caption(f"Showing last 10 of {len(LOG_MESSAGES)} messages")
-
-# Load dataset
-load_dataset()
+        st.success(st.session_state.ui_text["documents_processed"])
 
 # Main content area
 st.markdown("---")
-st.subheader(st.session_state.ui_text["query_placeholder"])
+st.subheader(st.session_state.ui_text["question_prompt"])
 
 # User input
-user_query = st.text_area(st.session_state.ui_text["query_placeholder"], height=100)
+user_query = st.text_area(st.session_state.ui_text["your_question"], height=100)
 
 # Initialize session state for response
 if 'response' not in st.session_state:
     st.session_state.response = None
     st.session_state.original_response = None
     st.session_state.response_lang = "en"
+    st.session_state.query_lang = "en"
 
 # Submit button
 if st.button(st.session_state.ui_text["submit_button"]) and user_query:
     with st.spinner(st.session_state.ui_text["researching"]):
         response_data = query_assistant(user_query)
         st.session_state.response = response_data["response"]
-        st.session_state.original_response = response_data["original_response"]
-        st.session_state.response_lang = response_data["response_lang"]
-        st.session_state.query_lang = response_data["query_lang"]
+        st.session_state.original_response = response_data.get("original_response", response_data["response"])
+        st.session_state.response_lang = response_data.get("response_lang", "en")
+        st.session_state.query_lang = response_data.get("query_lang", "en")
 
 # Display response if available
 if st.session_state.response:
@@ -1003,8 +997,7 @@ if st.session_state.response:
             
             # Add "Original" option to the languages
             translation_options = list(SUPPORTED_LANGUAGES.keys())
-            translation_options_names = [SUPPORTED_LANGUAGES[lang] for lang in translation_options]
-            
+
             # Create a selectbox for translation
             target_lang = st.selectbox(
                 "Language:",
@@ -1014,16 +1007,19 @@ if st.session_state.response:
             )
             
             # Translate if a different language is selected
-            if target_lang != st.session_state.response_lang:
-                with st.spinner(f"Translating to {SUPPORTED_LANGUAGES[target_lang]}..."):
-                    translated_text = translate_text(
-                        st.session_state.original_response,
-                        target_lang=target_lang,
-                        source_lang=st.session_state.response_lang
-                    )
-                    if translated_text != st.session_state.original_response:
-                        st.markdown(f"### {SUPPORTED_LANGUAGES[target_lang]} Translation")
-                        st.markdown(translated_text)
+            if target_lang != st.session_state.response_lang and LANGUAGE_SUPPORT_AVAILABLE:
+                try:
+                    with st.spinner(f"Translating to {SUPPORTED_LANGUAGES[target_lang]}..."):
+                        translated_text = translate_text(
+                            st.session_state.original_response,
+                            target_lang=target_lang,
+                            source_lang=st.session_state.response_lang
+                        )
+                        if translated_text != st.session_state.original_response:
+                            st.markdown(f"### {SUPPORTED_LANGUAGES[target_lang]} Translation")
+                            st.markdown(translated_text)
+                except Exception as e:
+                    st.error(f"Translation error: {str(e)}")
 
 # Add information about the application
 st.markdown("---")
