@@ -815,25 +815,56 @@ def get_api_key():
         return st.secrets["GEMINI_API_KEY"]
     except:
         # Fall back to environment variable
-        return os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            # Return a placeholder for initial loading
+            return "MISSING_API_KEY"
+        return api_key
 
 # Streamlit UI
 # Initialize session state for language
 if 'language' not in st.session_state:
     st.session_state.language = "en"
-
+    
 if 'ui_text' not in st.session_state:
-    st.session_state.ui_text = get_ui_text("en") if LANGUAGE_SUPPORT_AVAILABLE else {
-        "app_title": "SC/ST Atrocities Act Research Assistant",
-        "app_description": "This research assistant uses AI to help frontline justice workers with cases related to the Scheduled Castes and Scheduled Tribes (Prevention of Atrocities) Act, 1989.",
-        "question_prompt": "Ask a question about the SC/ST Atrocities Act, Rules, or related legal matters:",
-        "your_question": "Your question:",
-        "submit_button": "Submit",
-        "researching": "Researching your question...",
-        "about_app": "About this Application",
-        "translate_response": "Translate response to:",
-        "original_language": "Original"
-    }
+    if LANGUAGE_SUPPORT_AVAILABLE:
+        st.session_state.ui_text = get_ui_text("en")
+    else:
+        st.session_state.ui_text = {
+            "title": "SC/ST Atrocities Act Research Assistant",
+            "subtitle": "Ask questions about SC/ST Atrocities Act cases and get AI-powered responses",
+            "api_key_missing": "API Key is missing. Please add it to the .env file.",
+            "upload_button": "Upload Documents",
+            "process_button": "Process Documents",
+            "reprocess_button": "Reprocess All Documents",
+            "query_placeholder": "Ask a question about SC/ST Atrocities Act...",
+            "submit_button": "Submit",
+            "clear_button": "Clear",
+            "documents_processed": "Documents processed successfully!",
+            "no_documents": "No documents found. Please upload some documents first.",
+            "language_select": "Select Language",
+            "translate_to": "Translate to",
+            "detected_language": "Detected Language",
+            "original_response": "Original Response",
+            "translated_response": "Translated Response",
+            "web_search_option": "Enable Web Search",
+            "enhanced_search_option": "Enable Enhanced Search",
+            "table_extraction_unavailable": "Tabula-py is not installed. Table extraction from PDFs will be limited."
+        }
+
+# API Key input
+api_key = get_api_key()
+if api_key == "MISSING_API_KEY":
+    st.warning(st.session_state.ui_text["api_key_missing"])
+    GEMINI_AVAILABLE = False
+else:
+    # Configure Gemini API
+    try:
+        genai.configure(api_key=api_key)
+        GEMINI_AVAILABLE = True
+    except Exception as e:
+        st.error(f"Error configuring Gemini API: {str(e)}")
+        GEMINI_AVAILABLE = False
 
 # Function to update UI text based on selected language
 def update_language(lang_code):
@@ -843,8 +874,8 @@ def update_language(lang_code):
     st.experimental_rerun()
 
 # App title and description
-st.title(st.session_state.ui_text["app_title"])
-st.markdown(st.session_state.ui_text["app_description"])
+st.title(st.session_state.ui_text["title"])
+st.markdown(st.session_state.ui_text["subtitle"])
 
 # Sidebar
 with st.sidebar:
@@ -852,7 +883,7 @@ with st.sidebar:
     
     # Language selection
     if LANGUAGE_SUPPORT_AVAILABLE:
-        st.subheader(st.session_state.ui_text["language"])
+        st.subheader(st.session_state.ui_text["language_select"])
         selected_language = st.selectbox(
             "Select language:",
             options=list(SUPPORTED_LANGUAGES.keys()),
@@ -874,29 +905,15 @@ with st.sidebar:
         else:
             st.warning(" Translation is not available")
     
-    # API Key input
-    api_key = get_api_key()
-    if not api_key:
-        st.error(st.session_state.ui_text["api_key_missing"])
-        GEMINI_AVAILABLE = False
-    else:
-        try:
-            genai.configure(api_key=api_key)
-            GEMINI_AVAILABLE = True
-            st.success(st.session_state.ui_text["api_key_success"])
-        except Exception as e:
-            st.error(f"Error configuring Gemini API: {str(e)}")
-            GEMINI_AVAILABLE = False
-    
     # Display enhanced search status
     if ENHANCED_SEARCH_AVAILABLE:
-        st.success(st.session_state.ui_text["enhanced_search_available"])
+        st.success(st.session_state.ui_text["enhanced_search_option"])
     else:
         st.warning(st.session_state.ui_text["enhanced_search_unavailable"])
         st.info(st.session_state.ui_text["install_scikit"])
     
     # Force reprocessing button
-    st.subheader(st.session_state.ui_text["document_processing"])
+    st.subheader(st.session_state.ui_text["reprocess_button"])
     if st.button(st.session_state.ui_text["reprocess_button"]):
         st.warning(st.session_state.ui_text["reprocessing_message"])
         load_dataset(force_reprocess=True)
@@ -952,10 +969,10 @@ load_dataset()
 
 # Main content area
 st.markdown("---")
-st.subheader(st.session_state.ui_text["question_prompt"])
+st.subheader(st.session_state.ui_text["query_placeholder"])
 
 # User input
-user_query = st.text_area(st.session_state.ui_text["your_question"], height=100)
+user_query = st.text_area(st.session_state.ui_text["query_placeholder"], height=100)
 
 # Initialize session state for response
 if 'response' not in st.session_state:
@@ -982,7 +999,7 @@ if st.session_state.response:
     
     with translation_col:
         if LANGUAGE_SUPPORT_AVAILABLE:
-            st.subheader(st.session_state.ui_text["translate_response"])
+            st.subheader(st.session_state.ui_text["translate_to"])
             
             # Add "Original" option to the languages
             translation_options = list(SUPPORTED_LANGUAGES.keys())
